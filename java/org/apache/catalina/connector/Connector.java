@@ -209,6 +209,10 @@ public class Connector extends LifecycleMBeanBase  {
      */
     protected int maxParameterCount = 10000;
 
+    private int maxPartCount = 50;
+
+    private int maxPartHeaderSize = 512;
+
     /**
      * Maximum size of a POST which will be automatically parsed by the
      * container. 2MB by default.
@@ -465,6 +469,26 @@ public class Connector extends LifecycleMBeanBase  {
     public void setMaxParameterCount(int maxParameterCount) {
         this.maxParameterCount = maxParameterCount;
         setProperty("maxParameterCount", String.valueOf(maxParameterCount));
+    }
+
+
+    public int getMaxPartCount() {
+        return maxPartCount;
+    }
+
+
+    public void setMaxPartCount(int maxPartCount) {
+        this.maxPartCount = maxPartCount;
+    }
+
+
+    public int getMaxPartHeaderSize() {
+        return maxPartHeaderSize;
+    }
+
+
+    public void setMaxPartHeaderSize(int maxPartHeaderSize) {
+        this.maxPartHeaderSize = maxPartHeaderSize;
     }
 
 
