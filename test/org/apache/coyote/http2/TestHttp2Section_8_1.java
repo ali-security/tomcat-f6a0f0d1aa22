@@ -291,6 +291,35 @@ public class TestHttp2Section_8_1 extends Http2TestBase {
     }
 
 
+    @Test
+    public void testMissingAuthority() throws Exception {
+        // CVE-2026-65637: a request with no :authority pseudo-header and no
+        // host header carries no authority at all, so the SNI check this
+        // connector's checkSni() performs when :authority is present never
+        // runs. Requiring an authority closes that gap; the connection is
+        // rejected with a connection-level PROTOCOL_ERROR rather than the
+        // request being processed with an unset server name.
+        List<Header> headers = new ArrayList<>(3);
+        headers.add(new Header(":method", "GET"));
+        headers.add(new Header(":scheme", "http"));
+        headers.add(new Header(":path", "/simple"));
+
+        http2Connect();
+
+        byte[] headersFrameHeader = new byte[9];
+        ByteBuffer headersPayload = ByteBuffer.allocate(128);
+
+        buildGetRequest(headersFrameHeader, headersPayload, null, headers, 3);
+
+        writeFrame(headersFrameHeader, headersPayload);
+
+        parser.readFrame(true);
+
+        String trace = output.getTrace();
+        Assert.assertTrue(trace, trace.startsWith("0-Goaway-[3]-[1]-["));
+    }
+
+
     private void doInvalidPseudoHeaderTest(List<Header> headers) throws Exception {
         http2Connect();
 
