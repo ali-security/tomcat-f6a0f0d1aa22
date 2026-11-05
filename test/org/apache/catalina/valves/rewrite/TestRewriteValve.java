@@ -858,6 +858,29 @@ public class TestRewriteValve extends TomcatBaseTest {
         doTestRewrite("RewriteRule /dummy /a\nRewriteRule /a /c [L]", "/dummy", "/c");
     }
 
+    @Test
+    public void testOrCondDoesNotSkipNonOrCond() throws Exception {
+        // The matched [OR] condition only covers the condition after it. The
+        // ^/admin condition must still be evaluated, so the rule is not applied
+        // to /c/other and no redirect is issued.
+        doTestRewrite("RewriteCond %{HTTP_HOST} localhost [OR]\n" +
+                "RewriteCond %{HTTP_HOST} 127.0.0.1\n" +
+                "RewriteCond %{REQUEST_URI} ^/admin\n" +
+                "RewriteRule ^(.*) /blocked$1 [R]", "/c/other", "/c/other");
+    }
+
+
+    @Test
+    public void testOrCondRewritesWhenAllConditionsMatch() throws Exception {
+        // Guard for testOrCondDoesNotSkipNonOrCond: a satisfied OR group and a
+        // satisfied trailing condition still apply the rule.
+        doTestRewrite("RewriteCond %{HTTP_HOST} nomatch [OR]\n" +
+                "RewriteCond %{HTTP_HOST} localhost\n" +
+                "RewriteCond %{REQUEST_URI} ^/c/.*\n" +
+                "RewriteRule ^/c/(.*) /z/$1", "/c/other", "/z/other");
+    }
+
+
     private void doTestRewrite(String config, String request, String expectedURI) throws Exception {
         doTestRewrite(config, request, expectedURI, null);
     }
