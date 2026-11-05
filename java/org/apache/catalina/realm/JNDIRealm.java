@@ -182,6 +182,9 @@ import org.ietf.jgss.GSSName;
 public class JNDIRealm extends RealmBase {
 
 
+    private static final String AUTHENTICATION_NAME_SIMPLE = "simple";
+
+
     // ----------------------------------------------------- Instance Variables
 
     /**
@@ -1821,11 +1824,15 @@ public class JNDIRealm extends RealmBase {
              containerLog.trace("  validating credentials by binding as the user");
         }
 
-        userCredentialsAdd(context, dn, credentials);
+        // Preserve the current context environment parameters
+        Hashtable<?, ?> preservedEnvironment = context.getEnvironment();
 
-        // Elicit an LDAP bind operation
+        // Elicit an LDAP bind operation using the provided user credentials
         boolean validated = false;
         try {
+            userCredentialsAdd(context, dn, credentials);
+            // Check credentials by performing a simple bind
+            context.addToEnvironment(Context.SECURITY_AUTHENTICATION, AUTHENTICATION_NAME_SIMPLE);
             if (containerLog.isTraceEnabled()) {
                 containerLog.trace("  binding as "  + dn);
             }
@@ -1836,9 +1843,11 @@ public class JNDIRealm extends RealmBase {
             if (containerLog.isTraceEnabled()) {
                 containerLog.trace("  bind attempt failed");
             }
+        } finally {
+            // Restore any previously configured authentication mechanism
+            restoreEnvironmentParameter(context, Context.SECURITY_AUTHENTICATION, preservedEnvironment);
+            userCredentialsRemove(context);
         }
-
-        userCredentialsRemove(context);
 
         return validated;
     }

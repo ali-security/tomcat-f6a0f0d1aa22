@@ -17,10 +17,15 @@
 package org.apache.catalina.realm;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.Principal;
+import java.util.Hashtable;
 
+import javax.naming.AuthenticationException;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
 import javax.naming.directory.BasicAttributes;
@@ -35,6 +40,7 @@ import org.junit.Test;
 
 import org.apache.catalina.Context;
 import org.apache.catalina.LifecycleException;
+import org.apache.juli.logging.LogFactory;
 import org.apache.naming.NameParserImpl;
 import org.apache.tomcat.unittest.TesterContext;
 import org.apache.tomcat.util.security.MD5Encoder;
@@ -45,6 +51,7 @@ public class TestJNDIRealm {
     private static final String ALGORITHM = "MD5";
 
     private static final String USER = "test-user";
+    private static final String USER_DN = "cn=" + USER + ",ou=people,dc=example,dc=com";
     private static final String PASSWORD = "test-password";
     private static final String REALM = "test-realm";
 
@@ -107,6 +114,105 @@ public class TestJNDIRealm {
         // THEN
         Assert.assertTrue(principal instanceof GenericPrincipal);
         Assert.assertEquals(ha1(), ((GenericPrincipal)principal).getPassword());
+    }
+
+
+    @Test
+    public void testBindAsUserWithAuthenticationNone() throws Exception {
+        doTestBindAsUser("none");
+    }
+
+
+    @Test
+    public void testBindAsUserWithAuthenticationExternal() throws Exception {
+        doTestBindAsUser("EXTERNAL");
+    }
+
+
+    @Test
+    public void testBindAsUserWithAuthenticationSimple() throws Exception {
+        doTestBindAsUser("simple");
+    }
+
+
+    @Test
+    public void testBindAsUserWithoutAuthentication() throws Exception {
+        doTestBindAsUser(null);
+    }
+
+
+    private void doTestBindAsUser(String authentication) throws Exception {
+        // GIVEN
+        JNDIRealm realm = new JNDIRealm();
+        realm.containerLog = LogFactory.getLog(TestJNDIRealm.class);
+        realm.setAuthentication(authentication);
+
+        Hashtable<Object,Object> environment = new Hashtable<>();
+        if (authentication != null) {
+            environment.put(javax.naming.Context.SECURITY_AUTHENTICATION, authentication);
+        }
+        DirContext dirContext = createBindDirContext(environment);
+        JNDIRealm.User user = new JNDIRealm.User(USER, USER_DN, null, null, null);
+
+        // WHEN / THEN
+        // A wrong password must never be accepted, whatever authentication
+        // mechanism has been configured for the realm's own connection
+        Assert.assertFalse(realm.bindAsUser(dirContext, user, "wrong-" + PASSWORD));
+        assertEnvironmentRestored(authentication, environment);
+
+        Assert.assertTrue(realm.bindAsUser(dirContext, user, PASSWORD));
+        assertEnvironmentRestored(authentication, environment);
+    }
+
+
+    private void assertEnvironmentRestored(String authentication,
+            Hashtable<Object,Object> environment) {
+        Assert.assertEquals(authentication,
+                environment.get(javax.naming.Context.SECURITY_AUTHENTICATION));
+        Assert.assertNull(environment.get(javax.naming.Context.SECURITY_PRINCIPAL));
+        Assert.assertNull(environment.get(javax.naming.Context.SECURITY_CREDENTIALS));
+    }
+
+
+    /*
+     * Simulates the bind behaviour of an LDAP server / the JNDI LDAP provider:
+     * a simple bind validates the provided DN and password whereas an
+     * anonymous bind ("none") or a SASL EXTERNAL bind ignores the provided
+     * password.
+     */
+    private DirContext createBindDirContext(final Hashtable<Object,Object> environment) {
+        InvocationHandler handler = new InvocationHandler() {
+            @Override
+            public Object invoke(Object proxy, Method method, Object[] args)
+                    throws Throwable {
+                String name = method.getName();
+                if ("addToEnvironment".equals(name)) {
+                    return environment.put(args[0], args[1]);
+                } else if ("removeFromEnvironment".equals(name)) {
+                    return environment.remove(args[0]);
+                } else if ("getEnvironment".equals(name)) {
+                    return environment.clone();
+                } else if ("getAttributes".equals(name) && args.length == 2 &&
+                        "".equals(args[0])) {
+                    Object principal = environment.get(javax.naming.Context.SECURITY_PRINCIPAL);
+                    Object credentials =
+                            environment.get(javax.naming.Context.SECURITY_CREDENTIALS);
+                    Object mechanism =
+                            environment.get(javax.naming.Context.SECURITY_AUTHENTICATION);
+                    if (mechanism == null) {
+                        mechanism = principal == null ? "none" : "simple";
+                    }
+                    if ("simple".equals(mechanism) && !(USER_DN.equals(principal) &&
+                            PASSWORD.equals(credentials))) {
+                        throw new AuthenticationException("Invalid credentials");
+                    }
+                    return new BasicAttributes();
+                }
+                throw new UnsupportedOperationException(name);
+            }
+        };
+        return (DirContext) Proxy.newProxyInstance(TestJNDIRealm.class.getClassLoader(),
+                new Class<?>[] { DirContext.class }, handler);
     }
 
 
