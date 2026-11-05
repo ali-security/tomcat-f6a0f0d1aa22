@@ -31,4 +31,9 @@ RC=$?
         done
     fi
 } > test-failures.log
+# Print per-suite results, every skip with its reason, and per-connector totals
+# (ant output went to ant-test.log, so the job log would otherwise have no results).
+python3 .travis/testSummary.py output/build/logs
+SUMMARY_RC=$?
+if [ $RC -eq 0 ]; then RC=$SUMMARY_RC; fi
 exit $RC

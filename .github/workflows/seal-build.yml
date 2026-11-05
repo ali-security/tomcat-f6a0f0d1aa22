@@ -1,0 +1,39 @@
+# Build-and-pack only: the test suite runs on Travis (.travis.yml, one job per connector).
+name: seal-build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+      - name: Install Ant 1.10.14
+        run: |
+          # archive.apache.org is sometimes slow enough to reset a single long transfer, so resume and retry
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            curl -fsSL -C - --connect-timeout 30 -o "$RUNNER_TEMP/apache-ant-1.10.14-bin.tar.gz" https://archive.apache.org/dist/ant/binaries/apache-ant-1.10.14-bin.tar.gz && break
+            echo "Ant download attempt $attempt failed, retrying"
+            sleep 10
+          done
+          tar xzf "$RUNNER_TEMP/apache-ant-1.10.14-bin.tar.gz" -C "$RUNNER_TEMP"
+          echo "ANT_HOME=$RUNNER_TEMP/apache-ant-1.10.14" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/apache-ant-1.10.14/bin" >> "$GITHUB_PATH"
+      - name: Build embed jars
+        run: |
+          java -version
+          ant -version
+          ant -noinput package embed-jars
+          mkdir -p dist
+          cp output/embed/tomcat-embed-core.jar dist/tomcat-embed-core-9.0.39.jar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tomcat-embed-core
+          path: dist/tomcat-embed-core-9.0.39.jar
+          if-no-files-found: error
