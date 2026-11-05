@@ -317,7 +317,12 @@ final class StandardWrapperValve
     private void exception(Request request, Response response,
                            Throwable exception) {
         request.setAttribute(RequestDispatcher.ERROR_EXCEPTION, exception);
-        response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+        // Do not replace an error status that has already been reported for
+        // this request (e.g. a 400 reported by the connector because the
+        // request could not be read) with a less accurate one.
+        if (response.getStatus() < HttpServletResponse.SC_BAD_REQUEST) {
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+        }
         response.setError();
     }
 

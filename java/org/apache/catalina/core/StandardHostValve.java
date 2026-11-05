@@ -345,7 +345,12 @@ final class StandardHostValve extends ValveBase {
             // that was thrown during request processing. Check if an
             // error-page for error code 500 was specified and if so,
             // send that page back as the response.
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            // Do not replace an error status that has already been reported
+            // for this request (e.g. a 400 reported by the connector because
+            // the request could not be read) with a less accurate one.
+            if (response.getStatus() < HttpServletResponse.SC_BAD_REQUEST) {
+                response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            }
             // The response is an error
             response.setError();
 

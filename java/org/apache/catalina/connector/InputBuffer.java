@@ -18,6 +18,7 @@ package org.apache.catalina.connector;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.net.SocketTimeoutException;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
@@ -30,11 +31,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.servlet.ReadListener;
+import javax.servlet.RequestDispatcher;
+import javax.servlet.http.HttpServletResponse;
 
 import org.apache.catalina.security.SecurityUtil;
 import org.apache.coyote.ActionCode;
 import org.apache.coyote.ContainerThreadMarker;
-import org.apache.coyote.Request;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.B2CConverter;
@@ -110,7 +112,7 @@ public class InputBuffer extends Reader
     /**
      * Associated Coyote request.
      */
-    private Request coyoteRequest;
+    private org.apache.coyote.Request coyoteRequest;
 
 
     /**
@@ -169,7 +171,7 @@ public class InputBuffer extends Reader
      *
      * @param coyoteRequest Associated Coyote request
      */
-    public void setRequest(Request coyoteRequest) {
+    public void setRequest(org.apache.coyote.Request coyoteRequest) {
         this.coyoteRequest = coyoteRequest;
     }
 
@@ -335,9 +337,49 @@ public class InputBuffer extends Reader
         try {
             return coyoteRequest.doRead(this);
         } catch (IOException ioe) {
+            handleReadException(ioe);
             // An IOException on a read is almost always due to
             // the remote client aborting the request.
+            // Make the exception visible to the application
             throw new ClientAbortException(ioe);
+        }
+    }
+
+
+    /**
+     * Flag the request as failed so that the failure is reported to the client
+     * even if the application swallows the exception that is passed to it. If
+     * the failure is not reported, the remainder of the (invalid) request may
+     * be interpreted as a new request creating the opportunity for request
+     * smuggling.
+     *
+     * @param e The exception that triggered the failure
+     *
+     * @throws IOException If an I/O error occurs while reporting the failure
+     */
+    private void handleReadException(Exception e) throws IOException {
+        // In synchronous processing, this exception may be swallowed by the
+        // application so set error flags here.
+        Request request = (Request) coyoteRequest.getNote(CoyoteAdapter.ADAPTER_NOTES);
+        if (request == null) {
+            return;
+        }
+        Response response = request.getResponse();
+        request.setAttribute(RequestDispatcher.ERROR_EXCEPTION, e);
+        if (e instanceof SocketTimeoutException) {
+            try {
+                response.sendError(HttpServletResponse.SC_REQUEST_TIMEOUT);
+            } catch (IllegalStateException ise) {
+                response.setStatus(HttpServletResponse.SC_REQUEST_TIMEOUT);
+                response.setError();
+            }
+        } else {
+            try {
+                response.sendError(HttpServletResponse.SC_BAD_REQUEST);
+            } catch (IllegalStateException ise) {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.setError();
+            }
         }
     }
 
