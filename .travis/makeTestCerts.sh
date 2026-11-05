@@ -33,5 +33,22 @@ jks localhost-rsa tomcat localhost-rsa.jks       $SP
 jks localhost-ec  tomcat localhost-ec.jks        $SP
 jks user1         user1  user1.jks               $SP
 jks localhost-rsa tomcat localhost-rsa-copy1.jks $KP
-rm -f ca-cert.srl user1-cert.pem user1-key.pem
+# CRL support (TestCrlSupport): client user2 is revoked by populated-crl.pem; empty-crl.pem
+# revokes nothing. Both CRLs are signed by the test CA.
+leaf user2         rsa user2     ""
+jks user2          user2  user2-crl.jks          $SP
+cat > "$tmp/ca.cnf" <<EOF
+[ ca ]
+default_ca = test_ca
+[ test_ca ]
+database = $tmp/index.txt
+crlnumber = $tmp/crlnumber
+default_md = sha256
+default_crl_days = $DAYS
+EOF
+: > "$tmp/index.txt"; echo 1000 > "$tmp/crlnumber"
+openssl ca -config "$tmp/ca.cnf" -cert ca-cert.pem -keyfile "$tmp/ca-key.pem" -gencrl -out empty-crl.pem
+openssl ca -config "$tmp/ca.cnf" -cert ca-cert.pem -keyfile "$tmp/ca-key.pem" -revoke user2-cert.pem
+openssl ca -config "$tmp/ca.cnf" -cert ca-cert.pem -keyfile "$tmp/ca-key.pem" -gencrl -out populated-crl.pem
+rm -f ca-cert.srl user1-cert.pem user1-key.pem user2-cert.pem user2-key.pem
 echo "makeTestCerts: regenerated test PKI (valid $DAYS days)"
