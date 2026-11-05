@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -175,6 +176,10 @@ public class TLSClientHelloExtractor {
     }
 
 
+    /**
+     * @return The SNI value provided by the client converted to lower case if
+     *         not already lower case.
+     */
     public String getSNIValue() {
         if (result == ExtractorResult.COMPLETE) {
             return sniValue;
@@ -336,7 +341,7 @@ public class TLSClientHelloExtractor {
         char serverNameSize = bb.getChar();
         byte[] serverNameBytes = new byte[serverNameSize];
         bb.get(serverNameBytes);
-        return new String(serverNameBytes, StandardCharsets.UTF_8);
+        return new String(serverNameBytes, StandardCharsets.UTF_8).toLowerCase(Locale.ENGLISH);
     }
 
 

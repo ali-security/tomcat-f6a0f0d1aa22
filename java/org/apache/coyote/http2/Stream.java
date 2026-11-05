@@ -440,6 +440,12 @@ class Stream extends AbstractNonZeroStream implements HeaderEmitter {
                 throw new HpackException(sm.getString("stream.header.duplicate",
                         getConnectionId(), getIdAsString(), ":authority" ));
             }
+            // Match host name with SNI if required
+            if (!handler.getProtocol().getHttp11Protocol().checkSni(handler.getSniHostName(),
+                    coyoteRequest.serverName().getString())) {
+                throw new HpackException(sm.getString("stream.host.sni", getConnectionId(), getIdAsString(), value,
+                        handler.getSniHostName()));
+            }
             break;
         }
         case "cookie": {

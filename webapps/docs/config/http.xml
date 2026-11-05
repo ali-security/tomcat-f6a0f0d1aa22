@@ -106,7 +106,8 @@
       connections) if the client connection does not provide SNI or if the SNI
       is provided but does not match any configured
       <strong>SSLHostConfig</strong>. If not specified the default value of
-      <code>_default_</code> will be used.</p>
+      <code>_default_</code> will be used. Provided values are always converted
+      to lower case.</p>
     </attribute>
 
     <attribute name="discardFacades" required="false">
@@ -275,6 +276,15 @@
       SSL Connector or a non SSL connector that is receiving data from a
       SSL accelerator, like a crypto card, an SSL appliance or even a webserver.
       The default value is <code>false</code>.</p>
+    </attribute>
+
+    <attribute name="strictSni" required="false">
+      <p>Set this attribute to <code>true</code> to verify that the
+      <code>SSLHostConfig</code> configuration associated with the SNI host name
+      is the same as the <code>SSLHostConfig</code> configuration associated
+      with the HTTP protocol virtual host name in use. Non matching requests
+      will be rejected.
+      The default value is <code>true</code>.</p>
     </attribute>
 
     <attribute name="URIEncoding" required="false">
@@ -1314,7 +1324,8 @@
       <p>The name of the SSL Host. This should either be the fully qualified
       domain name (e.g. <code>tomcat.apache.org</code>) or a wild card domain
       name (e.g. <code>*.apache.org</code>). If not specified, the default value
-      of <code>_default_</code> will be used.</p>
+      of <code>_default_</code> will be used. Provided values are always
+      converted to lower case.</p>
     </attribute>
 
     <attribute name="insecureRenegotiation" required="false">

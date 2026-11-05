@@ -1838,6 +1838,10 @@ class Http2UpgradeHandler extends AbstractStream implements InternalHttpUpgradeH
     }
 
 
+    String getSniHostName() {
+        return socketWrapper.getSniHostName();
+    }
+
     protected class PingManager {
 
         protected boolean initiateDisabled = false;
