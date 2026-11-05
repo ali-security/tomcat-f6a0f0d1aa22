@@ -143,7 +143,7 @@ class Http2UpgradeHandler extends AbstractStream implements InternalHttpUpgradeH
     private Queue<StreamRunnable> queuedRunnable = null;
 
     // Track 'overhead' frames vs 'request/response' frames
-    private final AtomicLong overheadCount = new AtomicLong(-10);
+    private final AtomicLong overheadCount;
     private volatile int lastNonFinalDataPayload;
     private volatile int lastWindowUpdate;
 
@@ -153,6 +153,14 @@ class Http2UpgradeHandler extends AbstractStream implements InternalHttpUpgradeH
         this.protocol = protocol;
         this.adapter = adapter;
         this.connectionId = Integer.toString(connectionIdGenerator.getAndIncrement());
+
+        // Defaults to -10 * the count factor.
+        // i.e. when the connection opens, 10 'overhead' frames in a row will
+        // cause the connection to be closed.
+        // Over time the count should be a slowly decreasing negative number.
+        // Therefore, the longer a connection is 'well-behaved', the greater
+        // tolerance it will have for a period of 'bad' behaviour.
+        overheadCount = new AtomicLong(-10L * protocol.getOverheadCountFactor());
 
         lastNonFinalDataPayload = protocol.getOverheadDataThreshold() * 2;
         lastWindowUpdate = protocol.getOverheadWindowUpdateThreshold() * 2;
@@ -542,6 +550,12 @@ class Http2UpgradeHandler extends AbstractStream implements InternalHttpUpgradeH
             log.debug(sm.getString("upgradeHandler.rst.debug", connectionId,
                     Integer.toString(se.getStreamId()), se.getError(), se.getMessage()));
         }
+
+        // A stream reset sent by the server is just as effective a DoS vector
+        // as one received from the client (the "MadeYouReset" attack where the
+        // client sends frames that force the server to reset the stream) so it
+        // triggers the same overhead increase.
+        increaseOverheadCount(getProtocol().getOverheadResetFactor());
 
         // Write a RST frame
         byte[] rstFrame = new byte[13];
@@ -1381,17 +1395,39 @@ class Http2UpgradeHandler extends AbstractStream implements InternalHttpUpgradeH
     }
 
 
-    private void reduceOverheadCount() {
-        overheadCount.decrementAndGet();
+    void reduceOverheadCount() {
+        // A non-overhead frame reduces the overhead count by
+        // Http2Protocol.DEFAULT_OVERHEAD_REDUCTION_FACTOR. A simple browser
+        // request is likely to have one non-overhead frame (HEADERS) and one
+        // overhead frame (REPRIORITISE). With the default settings the overhead
+        // count will reduce by 10 for each simple request.
+        // Requests and responses with bodies will create additional
+        // non-overhead frames, further reducing the overhead count.
+        overheadCount.addAndGet(Http2Protocol.DEFAULT_OVERHEAD_REDUCTION_FACTOR);
     }
 
 
     private void increaseOverheadCount() {
+        // An overhead frame increases the overhead count by
+        // overheadCountFactor. By default, this means an overhead frame
+        // increases the overhead count by 10. A simple browser request is
+        // likely to have one non-overhead frame (HEADERS) and one overhead
+        // frame (REPRIORITISE). With the default settings the overhead count
+        // will reduce by 10 for each simple request.
         increaseOverheadCount(getProtocol().getOverheadCountFactor());
     }
 
 
-    private void increaseOverheadCount(int increment) {
+    /**
+     * Used to increase the overhead for frames that don't use the
+     * {@code overheadCountFactor} (CONTINUATION, DATA, WINDOW_UPDATE and RST).
+     * <p>
+     * RST frames, whether received or sent, trigger an increase of
+     * {@code overheadResetFactor}.
+     *
+     * @param increment The amount by which the overhead is increased
+     */
+    protected void increaseOverheadCount(int increment) {
         overheadCount.addAndGet(increment);
     }
 

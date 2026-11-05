@@ -56,12 +56,14 @@ public class Http2Protocol implements UpgradeProtocol {
     static final int DEFAULT_MAX_CONCURRENT_STREAM_EXECUTION = 20;
 
     // Default factor used when adjusting overhead count for overhead frames
-    static final int DEFAULT_OVERHEAD_COUNT_FACTOR = 1;
-    // Default factor used when adjusting overhead count for reset frames.
-    // The overhead count starts at -10 and is reduced by 1 for each HEADERS /
-    // DATA frame so a factor of 3 ensures that a HEADERS + RST_STREAM pair
-    // (even with a DATA frame sent in response) increases the overhead count.
-    static final int DEFAULT_OVERHEAD_RESET_FACTOR = 3;
+    static final int DEFAULT_OVERHEAD_COUNT_FACTOR = 10;
+    // Default factor used when adjusting overhead count for reset frames
+    // (both received and sent)
+    static final int DEFAULT_OVERHEAD_RESET_FACTOR = 50;
+    // Not currently configurable. This makes the practical limit for
+    // overheadCountFactor to be ~20. The exact limit will vary with traffic
+    // patterns.
+    static final int DEFAULT_OVERHEAD_REDUCTION_FACTOR = -20;
     static final int DEFAULT_OVERHEAD_CONTINUATION_THRESHOLD = 1024;
     static final int DEFAULT_OVERHEAD_DATA_THRESHOLD = 1024;
     static final int DEFAULT_OVERHEAD_WINDOW_UPDATE_THRESHOLD = 1024;
