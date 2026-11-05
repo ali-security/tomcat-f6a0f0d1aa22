@@ -739,6 +739,62 @@ public class TestHttp11InputBuffer extends TomcatBaseTest {
     }
 
 
+    @Test
+    public void testInvalidContentLength01() {
+        doTestInvalidContentLength(false);
+    }
+
+
+    @Test
+    public void testInvalidContentLength02() {
+        doTestInvalidContentLength(true);
+    }
+
+
+    private void doTestInvalidContentLength(boolean rejectIllegalHeader) {
+        getTomcatInstance().getConnector().setProperty("rejectIllegalHeader", Boolean.toString(rejectIllegalHeader));
+
+        String[] request = new String[1];
+        request[0] =
+                "POST /test HTTP/1.1" + CRLF +
+                "Host: localhost:8080" + CRLF +
+                "Content-Length: 12\u000734" + CRLF +
+                "Connection: close" + CRLF +
+                CRLF;
+
+        InvalidClient client = new InvalidClient(request);
+
+        client.doRequest();
+        Assert.assertTrue(client.getResponseLine(), client.isResponse400());
+        Assert.assertTrue(client.isResponseBodyOK());
+    }
+
+
+    /**
+     * As testInvalidContentLength01 but the content-length value is made
+     * invalid with a bare CR rather than another control character. That is
+     * handled by a different branch of the header value parsing.
+     */
+    @Test
+    public void testInvalidContentLength03() {
+        getTomcatInstance().getConnector().setProperty("rejectIllegalHeader", "false");
+
+        String[] request = new String[1];
+        request[0] =
+                "POST /test HTTP/1.1" + CRLF +
+                "Host: localhost:8080" + CRLF +
+                "Content-Length: 12" + CR + "34" + CRLF +
+                "Connection: close" + CRLF +
+                CRLF;
+
+        InvalidClient client = new InvalidClient(request);
+
+        client.doRequest();
+        Assert.assertTrue(client.getResponseLine(), client.isResponse400());
+        Assert.assertTrue(client.isResponseBodyOK());
+    }
+
+
     /**
      * Invalid request test client.
      */

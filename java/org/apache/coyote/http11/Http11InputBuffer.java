@@ -896,7 +896,7 @@ public class Http11InputBuffer implements InputBuffer, ApplicationBufferHandler 
                 headerData.lastSignificantChar = pos;
                 byteBuffer.position(byteBuffer.position() - 1);
                 // skipLine() will handle the error
-                return skipLine();
+                return skipLine(false);
             }
 
             // chr is next byte of header name. Convert to lowercase.
@@ -907,7 +907,7 @@ public class Http11InputBuffer implements InputBuffer, ApplicationBufferHandler 
 
         // Skip the line and ignore the header
         if (headerParsePos == HeaderParsePosition.HEADER_SKIPLINE) {
-            return skipLine();
+            return skipLine(false);
         }
 
         //
@@ -958,15 +958,11 @@ public class Http11InputBuffer implements InputBuffer, ApplicationBufferHandler 
                     } else if (prevChr == Constants.CR && chr == Constants.LF) {
                         eol = true;
                     } else if (prevChr == Constants.CR) {
-                        // Invalid value
-                        // Delete the header (it will be the most recent one)
-                        headers.removeHeader(headers.size() - 1);
-                        return skipLine();
+                        // Invalid value - also need to delete header
+                        return skipLine(true);
                     } else if (HttpParser.isControl(chr) && chr != Constants.HT) {
-                        // Invalid value
-                        // Delete the header (it will be the most recent one)
-                        headers.removeHeader(headers.size() - 1);
-                        return skipLine();
+                        // Invalid value - also need to delete header
+                        return skipLine(true);
                     } else if (chr == Constants.SP || chr == Constants.HT) {
                         byteBuffer.put(headerData.realPos, chr);
                         headerData.realPos++;
@@ -1014,7 +1010,27 @@ public class Http11InputBuffer implements InputBuffer, ApplicationBufferHandler 
     }
 
 
-    private HeaderParseStatus skipLine() throws IOException {
+    private HeaderParseStatus skipLine(boolean deleteHeader) throws IOException {
+        boolean rejectThisHeader = rejectIllegalHeader;
+        // Check if rejectIllegalHeader is disabled and needs to be overridden
+        // for this header. The header name is required to determine if this
+        // override is required. The header name is only available once the
+        // header has been created. If the header has been created then
+        // deleteHeader will be true.
+        if (!rejectThisHeader && deleteHeader) {
+            if (headers.getName(headers.size() - 1).equalsIgnoreCase("content-length")) {
+                // Malformed content-length headers must always be rejected
+                // RFC 9112, section 6.3, bullet 5.
+                rejectThisHeader = true;
+            } else {
+                // Only need to delete the header if the request isn't going to
+                // be rejected (it will be the most recent one)
+                headers.removeHeader(headers.size() - 1);
+            }
+        }
+
+        // Parse the rest of the invalid header so we can construct a useful
+        // exception and/or debug message.
         headerParsePos = HeaderParsePosition.HEADER_SKIPLINE;
         boolean eol = false;
 
@@ -1039,11 +1055,11 @@ public class Http11InputBuffer implements InputBuffer, ApplicationBufferHandler 
                 headerData.lastSignificantChar = pos;
             }
         }
-        if (rejectIllegalHeader || log.isDebugEnabled()) {
+        if (rejectThisHeader || log.isDebugEnabled()) {
             String message = sm.getString("iib.invalidheader",
                     HeaderUtil.toPrintableString(byteBuffer.array(), headerData.lineStart,
                             headerData.lastSignificantChar - headerData.lineStart + 1));
-            if (rejectIllegalHeader) {
+            if (rejectThisHeader) {
                 throw new IllegalArgumentException(message);
             }
             log.debug(message);
